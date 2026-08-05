@@ -4,3 +4,5 @@ dist
 .DS_Store
 __pycache__
 scripts/out
+public/precomputed/bare_verdicts.json
+scripts/reconcile.py

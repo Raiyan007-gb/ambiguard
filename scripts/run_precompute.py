@@ -52,12 +52,50 @@ OUT_DIR = os.path.join(HERE, "..", "public", "precomputed")
 CONCURRENCY = 50
 SKIP_EXISTING = True
 
+BARE_VERDICT_FILE = os.path.join(OUT_DIR, "bare_verdicts.json")
+_bare_verdicts = {}      # "guard|normalised text" -> {"verdict": ..., "p_unsafe": ...}
+_bare_lock = asyncio.Lock()
+
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.environ["OPENROUTER_API_KEY"],
 )
 
 # --------------------------------------------------------------------------
+
+
+def _bare_key(text: str, guard_id: str) -> str:
+    return "|".join([guard_id, " ".join(text.strip().split())])
+
+
+def load_bare_verdicts():
+    global _bare_verdicts
+    if os.path.exists(BARE_VERDICT_FILE):
+        with open(BARE_VERDICT_FILE, encoding="utf-8") as f:
+            _bare_verdicts = json.load(f)
+    else:
+        _bare_verdicts = {}
+
+
+def save_bare_verdicts():
+    tmp = BARE_VERDICT_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(_bare_verdicts, f, indent=2)
+    os.replace(tmp, BARE_VERDICT_FILE)   # atomic; never leaves a half-written file
+
+
+async def guard_bare(text: str) -> dict:
+    """Guard verdict on bare T, judged once per (guard, instance) and reused."""
+    k = _bare_key(text, GUARD_ID)
+    async with _bare_lock:
+        if k in _bare_verdicts:
+            return _bare_verdicts[k]
+    verdict = await run_guard(text)
+    async with _bare_lock:
+        # another task may have filled it while we were awaiting; first write wins
+        if k not in _bare_verdicts:
+            _bare_verdicts[k] = verdict
+        return _bare_verdicts[k]
 
 
 def cache_key(text: str, guard_id: str) -> str:
@@ -147,6 +185,7 @@ async def run_guard(text: str) -> dict:
 
     return {"verdict": first, "p_unsafe": None if not WANT_LOGPROBS else _p_unsafe(r)}
 
+
 async def run_reasoner(system: str, user: str) -> dict:
     r = await _call(
         REASONER_ID,
@@ -186,7 +225,10 @@ async def process(semaphore: asyncio.Semaphore, row: dict) -> dict:
             "fixture": False,
         }
         try:
-            original = await run_guard(text)
+            # Bare T is judged once per (guard, instance) and shared across
+            # reasoner passes, so the guard is never asked about the same bare
+            # input twice.
+            original = await guard_bare(text)
             prediction = original["verdict"]
 
             # Prompt 1: the assumption the prediction rests on.
@@ -249,7 +291,8 @@ async def main():
     df = pd.read_csv(INPUT_CSV).fillna("")
     rows = df.to_dict(orient="records")
     os.makedirs(OUT_DIR, exist_ok=True)
-    
+    load_bare_verdicts()
+
     if SKIP_EXISTING:
         todo, skipped = [], 0
         for r in rows:
@@ -299,6 +342,10 @@ async def main():
                     "fixture": False,
                 }
             pbar.update(1)
+
+    # Persist the shared bare-T verdicts so the next run (e.g. the other
+    # reasoner) reuses them instead of asking the guard again.
+    save_bare_verdicts()
 
     index = {}
     for path in glob.glob(os.path.join(OUT_DIR, "*.json")):

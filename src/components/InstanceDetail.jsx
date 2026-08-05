@@ -33,7 +33,7 @@ export default function InstanceDetail({ record, colSpan }) {
         <div className="detail-inner">
           <div className="arms">
             <div className="arm">
-              <h4>With the assumption the verdict needs</h4>
+              <h4>With the assumption the prediction needs</h4>
               <Injected original={record.instance} injection={support?.injection} />
               <Verdict run={support?.run || original} />
             </div>
@@ -41,7 +41,7 @@ export default function InstanceDetail({ record, colSpan }) {
             <div className="arrow" aria-hidden="true">&#8594;</div>
 
             <div className="arm">
-              <h4>With the most plausible assumption for the opposite verdict</h4>
+              <h4>With the most plausible assumption for the opposite prediction</h4>
               {flip?.assumption ? (
                 <>
                   <Injected original={record.instance} injection={flip.injection} />
@@ -49,7 +49,7 @@ export default function InstanceDetail({ record, colSpan }) {
                 </>
               ) : (
                 <div className="body" style={{ color: 'var(--ink-faint)' }}>
-                  No assumption cleared the plausibility bar. For this instance the verdict
+                  No assumption cleared the plausibility bar. For this instance the prediction
                   holds up under any reasonable rereading.
                 </div>
               )}

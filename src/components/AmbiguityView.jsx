@@ -21,7 +21,7 @@ function Action({ row, threshold }) {
   return <span className={`verdict ${a === 'blocked' ? 'block' : 'allow'}`}>{a}</span>
 }
 
-// Did the verdict move once the defeating assumption was added? Only defined
+// Did the prediction move once the defeating assumption was added? Only defined
 // where a defeater existed and the guard was actually re-run on it.
 function Flipped({ row }) {
   const flip = row.record?.flip
@@ -29,8 +29,8 @@ function Flipped({ row }) {
     return <span className="flipmark na" title="No defeater to test">n/a</span>
   }
   return flip.moved
-    ? <span className="flipmark yes" title="Verdict moved to the opposite label">flipped</span>
-    : <span className="flipmark no" title="Verdict stayed the same">held</span>
+    ? <span className="flipmark yes" title="Prediction moved to the opposite label">flipped</span>
+    : <span className="flipmark no" title="Prediction stayed the same">held</span>
 }
 
 function Stat({ name, desc, hint, s }) {
@@ -156,28 +156,28 @@ export default function AmbiguityView({
             name="Defeasibility"
             s={d}
             desc="Share of the guard's predictions that are defeasible, split by the direction it predicted."
-            hint="Defeasible means a plausible assumption exists under which the opposite verdict is the reasonable one. It is a property of the prediction, not a measure of how wrong the guard is."
+            hint="Defeasible means a plausible assumption exists under which the opposite prediction is the reasonable one. Whether an assumption clears that bar is judged by the reasoning model, so this is a property of the reasoner, not of the guard or the prediction, so a different reasoning model may draw the line elsewhere."
+          />
+          <Stat
+            name="Movement"
+            s={m}
+            desc="On defeasible instances, how often the guard prediction flips once the defeater is added, and the mean change in predicted probability."
+            hint="Counted only over defeasible instances where a defeater existed and the guard was re-run on it; the Flipped column shows the per-instance result. Mean change needs a probability from the guard and shows a dash otherwise."
+          />
+          <Stat
+            name="Consistency"
+            s={k}
+            desc="How often the prediction holds when the assumption it most plausibly rests on is stated explicitly, split by the direction predicted."
+            hint="It should hold, since stating the reason a prediction most plausibly depends on is expected not to change that prediction."
           />
           {c.available && (
             <Stat
               name="Correct but contestable"
               s={c}
               desc="Of the instances matching the gold label, the share tagged defeasible — and the same where they did not match."
-              hint="Shown only when the selection has ground truth. For the second number, 'defeasible' describes the guard's own mistaken verdict rather than the gold label."
+              hint="Shown only when the selection has ground truth. Every label can be contestable, whether or not it matched the gold label."
             />
           )}
-          <Stat
-            name="Movement"
-            s={m}
-            desc="On defeasible instances, how often the verdict flips once the defeater is added, and the mean change in predicted probability."
-            hint="Counted only over defeasible instances where a defeater existed and the guard was re-run on it; the Flipped column shows the per-instance result. Mean change needs a probability from the guard and shows a dash otherwise."
-          />
-          <Stat
-            name="Consistency"
-            s={k}
-            desc="How often the verdict holds when the assumption it rests on is stated explicitly, split by the direction predicted."
-            hint="It should hold. Movement here suggests the guard is reacting to the added text rather than to its content, which would make the Movement figure above unreliable."
-          />
         </div>
       </aside>
     </div>

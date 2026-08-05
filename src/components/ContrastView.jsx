@@ -38,13 +38,13 @@ function Side({ title, rec }) {
       ) : (
         <div className="arms">
           <div className="arm">
-            <h4>With the assumption the verdict needs</h4>
+            <h4>With the assumption the prediction needs</h4>
             <Injected original={rec.instance} injection={rec.support?.injection} />
             <Verdict run={rec.support?.run || rec.original} />
           </div>
           <div className="arrow" aria-hidden="true">&#8594;</div>
           <div className="arm">
-            <h4>With the most plausible assumption for the opposite verdict</h4>
+            <h4>With the most plausible assumption for the opposite prediction</h4>
             {rec.flip?.assumption ? (
               <>
                 <Injected original={rec.instance} injection={rec.flip.injection} />
@@ -291,7 +291,7 @@ export default function ContrastView({
           {[
             ['Defeasibility', 'defeasibility', 'Share of predictions with a plausible opposing assumption.'],
             ['Movement', 'movement', 'Of those, how often the guard actually flipped.'],
-            ['Consistency', 'consistency', 'How often the verdict held when its own assumption was stated.'],
+            ['Consistency', 'consistency', 'How often the prediction held when the most plausible assumption was explicitly stated.'],
           ].map(([name, k, desc]) => (
             <div className="stat2" key={k}>
               <div className="stat2-name">{name}</div>
