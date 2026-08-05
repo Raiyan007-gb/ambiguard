@@ -68,15 +68,20 @@ function summarise(recs) {
   const withRun = def.filter((r) => r.flip?.run)
   const sup = rs.filter((r) => r.support?.run)
   return {
+    // each stat carries its own denominator, because they differ:
+    // defeasibility is over all records, movement only over defeasible
+    // instances that were re-run, consistency only over support re-runs.
     defeasibility: pct(def.length, rs.length),
+    defeasibility_n: rs.length,
     movement: pct(withRun.filter((r) => r.flip.moved).length, withRun.length),
+    movement_n: withRun.length,
     consistency: pct(sup.filter((r) => !r.support.inconsistent).length, sup.length),
-    n: rs.length,
+    consistency_n: sup.length,
   }
 }
 
 export default function ContrastView({
-  rows, guardId, reasonerId, live = {}, addLive, apiKey,
+  rows, guardId, reasonerId, setReasonerId, live = {}, addLive, apiKey,
 }) {
   const [mode, setMode] = useState('reasoners')
   const [pickA, setPickA] = useState(REASONERS[0].id)
@@ -130,7 +135,16 @@ export default function ContrastView({
   const sA = summarise(rows.map((r) => recs.a[r.id]))
   const sB = summarise(rows.map((r) => recs.b[r.id]))
   const both = rows.filter((r) => recs.a[r.id] && recs.b[r.id])
-  const agree = both.filter((r) => recs.a[r.id].level === recs.b[r.id].level)
+ // Reasoner mode: both sides share the guard, so comparing levels is the point
+  // — it shows where the two reasoners draw the robust/defeasible line.
+  // Guard mode: the level is the reasoner's product, so comparing it would fold
+  // the (held) reasoner into a guard-vs-guard number. Compare the bare
+  // prediction instead, which is purely the guard's.
+  const agree = both.filter((r) =>
+    mode === 'reasoners'
+      ? recs.a[r.id].level === recs.b[r.id].level
+      : recs.a[r.id].original.verdict === recs.b[r.id].original.verdict,
+  )
 
   // A gap is one missing side of one instance. Filling both sides of one
   // instance is two gaps and about ten model calls.
@@ -247,9 +261,24 @@ export default function ContrastView({
               {mode === 'reasoners'
                 ? `Guard held at ${GUARDS.find((g) => g.id === guardId)?.label}.`
                 : `Reasoning model held at ${REASONERS.find((r) => r.id === reasonerId)?.label}.`}
-              {' '}Change it in the panel above.
+              {' '}Change the comparison mode in the dropdown above.
             </p>
           </div>
+
+          {mode === 'guards' && (
+            <div className="field">
+              <label htmlFor="held-reasoner">Reasoning model (held)</label>
+              <select
+                id="held-reasoner"
+                value={reasonerId}
+                onChange={(e) => setReasonerId(e.target.value)}
+              >
+                {REASONERS.map((r) => (
+                  <option key={r.id} value={r.id}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="field">
             <label htmlFor="pa">Left</label>
@@ -279,7 +308,11 @@ export default function ContrastView({
 
           <div className="stat2" style={{ borderTop: '1px solid var(--rule)', paddingTop: 14 }}>
             <div className="stat2-name">Agreement</div>
-            <p className="stat2-desc">Instances where both sides reach the same level.</p>
+            <p className="stat2-desc">
+              {mode === 'reasoners'
+                ? 'Share of instances where both reasoning models place the guard\u2019s prediction in the same contestability category'
+                : 'Share of instances where both guards make the same safe / unsafe prediction'}
+            </p>
             <div className="stat2-vals">
               <div>
                 <span className="v">{pct(agree.length, both.length)}</span>
@@ -289,16 +322,16 @@ export default function ContrastView({
           </div>
 
           {[
-            ['Defeasibility', 'defeasibility', 'Share of predictions with a plausible opposing assumption.'],
-            ['Movement', 'movement', 'Of those, how often the guard actually flipped.'],
-            ['Consistency', 'consistency', 'How often the prediction held when the most plausible assumption was explicitly stated.'],
+            ['Defeasibility', 'defeasibility', 'Share of predictions with a plausible opposing assumption'],
+            ['Movement', 'movement', 'Of defeasible instances, how often the guard actually flipped its prediction'],
+            ['Consistency', 'consistency', 'How often the guard prediction held when the most plausible assumption was explicitly stated'],
           ].map(([name, k, desc]) => (
             <div className="stat2" key={k}>
               <div className="stat2-name">{name}</div>
               <p className="stat2-desc">{desc}</p>
               <div className="stat2-vals">
-                <div><span className="v">{sA[k]}</span><span className="k">n={sA.n}</span></div>
-                <div><span className="v">{sB[k]}</span><span className="k">n={sB.n}</span></div>
+                <div><span className="v">{sA[k]}</span><span className="k">n={sA[`${k}_n`]}</span></div>
+                <div><span className="v">{sB[k]}</span><span className="k">n={sB[`${k}_n`]}</span></div>
               </div>
             </div>
           ))}

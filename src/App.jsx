@@ -188,6 +188,7 @@ export default function App() {
           rows={merged}
           guardId={guardId}
           reasonerId={reasonerId}
+          setReasonerId={setReasonerId}
           live={live}
           addLive={addLive}
           apiKey={apiKey}
