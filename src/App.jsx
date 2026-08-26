@@ -8,6 +8,7 @@ import ContrastView from './components/ContrastView.jsx'
 import { GUARDS, REASONERS, MAX_LIVE_INSTANCES } from './config.js'
 import { lookup } from './lib/cache.js'
 import { runInstance } from './lib/pipeline.js'
+import { useApiKey } from './lib/keystore.js'
 import Footer from './components/Footer.jsx'
 
 // Live-run records are keyed by what actually identifies them, not by row
@@ -24,7 +25,7 @@ export default function App() {
 
   const [guardId, setGuardId] = useState(GUARDS[0].id)
   const [reasonerId, setReasonerId] = useState(REASONERS[0].id)
-  const [apiKey, setApiKey] = useState('')
+  const [apiKey, setApiKey] = useApiKey()
 
   const [view, setView] = useState('standard')
   const [threshold, setThreshold] = useState(0.5)

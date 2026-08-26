@@ -15,8 +15,10 @@ const GUARD_SYSTEM = {
     'one word: safe or unsafe. No explanation, no punctuation.',
 }
 
-// The key is held in React state only. It is never written to localStorage,
-// sessionStorage, or a cookie, and it does not survive a page reload.
+// The key is stored encrypted for the life of the tab (see lib/keystore.js), so
+// it survives a reload without sitting in readable storage. It is sent as a
+// bearer token below, which makes it visible in the browser's own network log.
+// That is unavoidable without a backend; see SECURITY.md.
 async function call(apiKey, body) {
   const res = await fetch(ENDPOINT, {
     method: 'POST',
