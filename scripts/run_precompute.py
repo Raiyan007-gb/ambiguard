@@ -191,23 +191,65 @@ async def run_reasoner(system: str, user: str) -> dict:
         REASONER_ID,
         [{"role": "system", "content": system},
          {"role": "user", "content": user}],
-        max_tokens=800,
+        max_tokens=4000,
         temperature=0,
         response_format={"type": "json_object"},
     )
     raw = (r.choices[0].message.content or "").strip()
+    # Fallback for providers that return reasoning in separate fields
+    if not raw:
+        msg = r.choices[0].message
+        if getattr(msg, "reasoning", None):
+            raw = str(msg.reasoning).strip()
+        elif getattr(msg, "reasoning_details", None):
+            try:
+                raw = "\n".join(d.text for d in msg.reasoning_details if getattr(d, "text", None)).strip()
+            except Exception:
+                pass
+    if not raw and getattr(r.choices[0], "reasoning", None):
+        raw = str(r.choices[0].reasoning).strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1].lstrip("json").strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # Some models emit a second object or trailing prose after the first.
-        # Take the first complete JSON value and discard the rest.
-        obj, end = json.JSONDecoder().raw_decode(raw)
-        leftover = raw[end:].strip()
-        if leftover:
-            print(f"  ~ discarded {len(leftover)} trailing chars after JSON")
-        return obj
+        # Some models emit reasoning trace before JSON or trailing prose after.
+        # Scan for balanced JSON objects and prefer one with expected keys.
+        best = None
+        for s in range(len(raw)):
+            if raw[s] != '{':
+                continue
+            depth = 0
+            for i in range(s, len(raw)):
+                if raw[i] == '{':
+                    depth += 1
+                elif raw[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            cand = json.loads(raw[s:i+1])
+                            if isinstance(cand, dict) and ("assumption" in cand or "not_possible" in cand):
+                                return cand
+                            if best is None:
+                                best = cand
+                        except Exception:
+                            pass
+                        break
+            if best is not None and s > raw.rfind('{', 0, raw.find('assumption', s) if 'assumption' in raw else len(raw)):
+                pass
+        if best is not None:
+            return best
+        try:
+            obj, end = json.JSONDecoder().raw_decode(raw[raw.find('{'):])
+            leftover = raw[raw.find('{')+end:].strip()
+            if leftover:
+                print(f"  ~ discarded {len(leftover)} trailing chars after JSON")
+            return obj
+        except Exception as e:
+            fr = getattr(r.choices[0], "finish_reason", None) or getattr(r.choices[0], "native_finish_reason", "unknown")
+            if not raw:
+                raise ValueError(f"reasoner did not return parseable JSON (empty content, finish_reason={fr})") from e
+            raise
 
 
 async def process(semaphore: asyncio.Semaphore, row: dict) -> dict:
