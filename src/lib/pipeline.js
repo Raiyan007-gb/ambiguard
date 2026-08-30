@@ -72,20 +72,63 @@ async function runReasoner(apiKey, reasonerId, system, user) {
       { role: 'system', content: system },
       { role: 'user', content: user },
     ],
-    max_tokens: 800,
+    max_tokens: 4000,
     temperature: 0,
     response_format: { type: 'json_object' },
   })
-  let raw = (data.choices?.[0]?.message?.content || '').trim()
+  // Prefer content; fall back to provider-specific reasoning fields when content is empty.
+  const msg = data.choices?.[0]?.message || {}
+  let raw = (msg.content || '').trim()
+  if (!raw && msg.reasoning) raw = String(msg.reasoning).trim()
+  // OpenRouter/Alibaba style: reasoning_details[].text holds the chain-of-thought
+  if (!raw && Array.isArray(data.choices?.[0]?.message?.reasoning_details)) {
+    raw = data.choices[0].message.reasoning_details.map((d) => d.text || '').join('\n').trim()
+  }
+  // Some newer providers nest under reasoning or reasoning_details at top level of choice
+  if (!raw && data.choices?.[0]?.reasoning) raw = String(data.choices[0].reasoning).trim()
+  if (!raw && Array.isArray(data.choices?.[0]?.reasoning_details)) {
+    raw = data.choices[0].reasoning_details.map((d) => d.text || '').join('\n').trim()
+  }
   // Some providers ignore response_format and return a fenced block.
   if (raw.startsWith('```')) {
     raw = raw.split('```')[1].replace(/^json/, '').trim()
+  }
+  // If raw still contains chain-of-thought prefix, try to isolate the final JSON object.
+  // The thinking trace often ends with ```json { ... }, so extract last {...}.
+  if (raw && !raw.trim().startsWith('{')) {
+    const lastObj = raw.lastIndexOf('{')
+    if (lastObj !== -1) {
+      // keep from lastObj onward if it looks like JSON, but also try full parse first
+    }
   }
   try {
     return JSON.parse(raw)
   } catch {
     // Some models emit a second object or trailing prose after the first.
-    // Take the first complete JSON value and discard the rest.
+    // Take the first complete JSON value and discard the rest. Also handle
+    // the case where reasoning trace precedes the JSON: scan for balanced braces.
+    let best = null
+    let bestStart = -1
+    for (let s = raw.indexOf('{'); s !== -1; s = raw.indexOf('{', s + 1)) {
+      let depth = 0
+      for (let i = s; i < raw.length; i++) {
+        if (raw[i] === '{') depth++
+        else if (raw[i] === '}' && --depth === 0) {
+          try {
+            const candidate = JSON.parse(raw.slice(s, i + 1))
+            // prefer object that has expected keys
+            if (candidate && (candidate.assumption !== undefined || candidate.not_possible !== undefined)) {
+              return candidate
+            }
+            best = candidate
+            bestStart = s
+          } catch {}
+          break
+        }
+      }
+    }
+    if (best !== null) return best
+    // Fallback: original single-scan logic
     const start = raw.indexOf('{')
     let depth = 0
     for (let i = start; i < raw.length; i++) {
@@ -94,6 +137,9 @@ async function runReasoner(apiKey, reasonerId, system, user) {
         return JSON.parse(raw.slice(start, i + 1))
       }
     }
+    // Include finish info for debugging when content is empty
+    const fr = data.choices?.[0]?.finish_reason || data.choices?.[0]?.native_finish_reason || 'unknown'
+    if (!raw) throw new Error(`reasoner did not return parseable JSON (empty content, finish_reason=${fr})`)
     throw new Error('reasoner did not return parseable JSON')
   }
 }
